@@ -1,0 +1,84 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: uvicorn gateway.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment: &app-environment
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS:-20}
+      JAEGER_OTLP_ENDPOINT: ${JAEGER_OTLP_ENDPOINT:-http://jaeger:4318/v1/traces}
+      OTEL_SERVICE_NAMESPACE: ${OTEL_SERVICE_NAMESPACE:-distributed-agency}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_MODEL: ${LLM_MODEL:-gpt-5.6-terra}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-}
+      OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      PROJECT_TIMEOUT_SECONDS: ${PROJECT_TIMEOUT_SECONDS:-90}
+    depends_on:
+      - redis
+      - jaeger
+
+  pm-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: python -m agents.pm_agent.main
+    environment: *app-environment
+    depends_on:
+      - redis
+      - jaeger
+
+  dev-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: python -m agents.dev_agent.main
+    environment: *app-environment
+    depends_on:
+      - redis
+      - jaeger
+
+  qa-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: python -m agents.qa_agent.main
+    environment: *app-environment
+    depends_on:
+      - redis
+      - jaeger
+
+volumes:
+  redis-data:
