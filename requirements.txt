@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+redis
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp
+opentelemetry-instrumentation-fastapi
+requests
+litellm
+pydantic
